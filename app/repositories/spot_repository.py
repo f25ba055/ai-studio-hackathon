@@ -90,9 +90,8 @@ class SpotRepository:
             return True
         except Exception as e:
             print(f"評価更新エラー: {e}")
+            conn.rollback()
             return False
-        # データベース接続のリソースリーク
-        # finally句でclose_db(conn)を呼んでいないため、接続が閉じられない
-        # 長時間運用すると接続が蓄積され、最終的に接続数の上限に達してエラーになる
-        # finally:
-        #     close_db(conn)
+        finally:
+            # リソースリーク修正: 必ずデータベース接続を閉じる
+            close_db(conn)
