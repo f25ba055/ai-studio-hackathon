@@ -2,9 +2,8 @@
 ファイルアップロード処理
 """
 import os
+import imghdr
 from config import Config
-from PIL import Image
-import io
 
 class FileService:
     """ファイルアップロードに関するビジネスロジック"""
@@ -40,20 +39,15 @@ class FileService:
             # ファイルポインタを先頭に戻す
             file.seek(0)
             
-            # Pillowで画像として開けるか試す
-            img = Image.open(file)
+            # ファイルの内容を読み取る（マジックナンバー検証用）
+            file_data = file.read()
             
-            # 画像ファイルとして正しいか検証
-            img.verify()
+            # imghdrでファイルの実際の形式を判定
+            file_type = imghdr.what(None, file_data)
             
-            # 再度開く（verifyの後はファイルが閉じられるため）
-            file.seek(0)
-            img = Image.open(file)
-            
-            # 許可された画像形式かチェック
-            # PILのformatは大文字で返される（'JPEG', 'PNG', 'GIF'など）
-            if img.format.upper() not in ['JPEG', 'PNG', 'GIF']:
-                return f'対応していない画像形式です。jpg, jpeg, png, gifのみ対応しています。'
+            # 画像形式でない、または許可されていない形式の場合はエラー
+            if file_type not in ['jpeg', 'png', 'gif']:
+                return '有効な画像ファイルではありません。jpg, jpeg, png, gifのみ対応しています。'
             
             # ファイルポインタを先頭に戻す（後で保存するため）
             file.seek(0)
@@ -67,7 +61,7 @@ class FileService:
                 file.seek(0)
             except:
                 pass
-            return '有効な画像ファイルではありません。jpg, jpeg, png, gifのみ対応しています。'
+            return '画像ファイルの検証中にエラーが発生しました'
 
     def save_review_photo(self, file, review_id):
         """
@@ -102,17 +96,17 @@ class FileService:
             
             # 保存後の最終検証（第3層の防御）
             try:
-                with Image.open(file_path) as img:
-                    img.verify()
-                    # 再度開いて形式を確認
-                with Image.open(file_path) as img:
-                    if img.format.upper() not in ['JPEG', 'PNG', 'GIF']:
-                        # 不正なファイルの場合は削除
+                with open(file_path, 'rb') as saved_file:
+                    file_data = saved_file.read()
+                    file_type = imghdr.what(None, file_data)
+                    
+                    # 保存されたファイルが画像でない場合は削除
+                    if file_type not in ['jpeg', 'png', 'gif']:
                         os.remove(file_path)
-                        print(f"保存後の検証失敗: 不正な画像形式 {img.format}")
+                        print(f"保存後の検証失敗: 不正なファイル形式")
                         return None
             except Exception as e:
-                # 画像でない場合は削除
+                # 検証失敗の場合は削除
                 if os.path.exists(file_path):
                     os.remove(file_path)
                 print(f"保存後の検証失敗: {e}")
