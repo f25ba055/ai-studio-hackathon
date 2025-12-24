@@ -63,7 +63,7 @@ class ReviewService:
             return {'success': False, 'error': 'レビューの作成に失敗しました'}
 
     def create_review_with_photo(self, request):
-        """レビューを作成（画像あり）"""
+        """レビューを作成（画像あり）- トランザクション管理対応版"""
         # フォームデータの取得
         user_id = request.form.get('user_id')
         spot_id = request.form.get('spot_id')
@@ -101,18 +101,35 @@ class ReviewService:
         if not review_id:
             return {'success': False, 'error': 'レビューの作成に失敗しました'}
 
-        # 画像保存
+        # 画像保存（トランザクション管理）
         photo_filename = None
         if photo and photo.filename:
             try:
                 photo_filename = self.file_service.save_review_photo(photo, review_id)
-                self.review_repo.update_photo_filename(review_id, photo_filename)
+                
+                # 画像保存に成功した場合のみファイル名を更新
+                if photo_filename:
+                    self.review_repo.update_photo_filename(review_id, photo_filename)
+                else:
+                    # 画像保存に失敗した場合、レビューをロールバック
+                    self.review_repo.delete(review_id)
+                    return {
+                        'success': False,
+                        'error': '画像の保存に失敗しました。レビューは作成されませんでした。'
+                    }
+                    
             except Exception as e:
                 print(f"画像保存エラー: {e}")
-                # トランザクション処理不備
-                # 画像保存失敗時にレビューをロールバックしていない
-                # 本来はトランザクションを使って、画像保存失敗時はレビューも削除すべき
-                # 画像保存失敗してもレビューは作成済みなので成功として返す
+                # 例外が発生した場合、レビューをロールバック
+                try:
+                    self.review_repo.delete(review_id)
+                except Exception as delete_error:
+                    print(f"ロールバック中にエラーが発生: {delete_error}")
+                
+                return {
+                    'success': False,
+                    'error': f'画像の保存に失敗しました: {str(e)}'
+                }
 
         return {
             'success': True,
